@@ -78,10 +78,32 @@
         }
         
         /* --- End of Replacement Code --- */
-        /* 3. 【核心】隐藏掉模拟器的状态栏 */
-        #status-bar {
-            display: none;
-        }
+/* --- 【核心修改】这是控制状态栏显隐的新样式 --- */
+
+/* 1. 默认情况下，状态栏依然是隐藏的 */
+#status-bar {
+    display: none;
+    /* (原有的其他样式，如颜色、字体等，保持不变即可) */
+    padding: 0 20px;
+    height: 40px;
+    color: white;
+    background-color: transparent; /* 背景由父元素控制 */
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    box-sizing: border-box;
+    z-index: 100;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.4);
+    pointer-events: none; /* 让点击可以穿透 */
+}
+
+/* 2. 当 #phone-screen 元素拥有 .status-bar-visible 这个 class 时，显示状态栏 */
+#phone-screen.status-bar-visible #status-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
         
         .header, .qzone-header {
             position: relative;
@@ -7361,6 +7383,15 @@
                         <span class="slider"></span>
                     </label>
                 </div>
+<!-- ▼▼▼ 在这里粘贴下面的新代码 ▼▼▼ -->
+<div class="form-group" style="display: flex; justify-content: space-between; align-items: center;">
+    <label for="status-bar-toggle-switch" style="margin-bottom: 0;">显示顶部状态栏</label>
+    <label class="toggle-switch">
+        <input type="checkbox" id="status-bar-toggle-switch">
+        <span class="slider"></span>
+    </label>
+</div>
+<!-- ▲▲▲ 粘贴结束 ▲▲▲ -->
 <!-- ▼▼▼ 请将这整块【全新代码】，粘贴到“App 图标设置”模块的前面 (那条 <hr> 标签之前) ▼▼▼ -->
 <hr style="width: 80%; opacity: 0.3; margin: 30px 0;">
 <div style="width:100%; text-align: left; margin-bottom: 15px;">
@@ -8410,7 +8441,7 @@
         </div>
     </div>
     <!-- ▲▲▲ 新HTML粘贴结束 ▲▲▲ -->
-    <!-- ▼▼▼ 【全新】通话记录详情模态框 ▼▼▼ -->
+<!-- ▼▼▼ 【全新】通话记录详情模态框 ▼▼▼ -->
     <div id="call-transcript-modal" class="modal">
         <div class="modal-content" style="height: 70%;">
             <div class="modal-header">
@@ -8421,6 +8452,8 @@
             </div>
             <div class="modal-footer">
                 <button class="cancel" id="delete-transcript-btn" style="background-color: #ff3b30; color: white; border-color: #ff3b30;">删除记录</button>
+                <!-- 【【【核心新增】】】 -->
+                <button class="save" id="manual-summarize-btn" style="background-color: #ffc107; border-color: #ffc107;">手动总结</button>
                 <button class="save" id="close-transcript-modal-btn" style="width: 100%;">关闭</button>
             </div>
         </div>
@@ -10802,8 +10835,9 @@ async function cleanupRedundantData() {
                     personaPresets, musicLibrary, qzoneSettings, qzonePosts,
                     qzoneAlbums, qzonePhotos, favorites, qzoneGroups,
                     memories, worldBookCategories,
-                    // 【【【核心修复1：在这里添加缺失的变量】】】
-                    apiPresets, shoppingProducts, callRecords 
+                    apiPresets, shoppingProducts, callRecords,
+                    // 【核心修复1：在这里添加缺失的变量】
+                    renderingRules 
                 ] = await Promise.all([
                     db.chats.toArray(),
                     db.worldBooks.toArray(),
@@ -10820,10 +10854,11 @@ async function cleanupRedundantData() {
                     db.qzoneGroups.toArray(),
                     db.memories.toArray(),
                     db.worldBookCategories.toArray(),
-                    // 【【【核心修复2：在这里添加对新数据表的读取】】】
                     db.apiPresets.toArray(),
                     db.shoppingProducts.toArray(),
-                    db.callRecords.toArray()
+                    db.callRecords.toArray(),
+                    // 【核心修复2：在这里添加对新数据表的读取】
+                    db.renderingRules.toArray()
                 ]);
         
                 Object.assign(backupData, {
@@ -10831,8 +10866,9 @@ async function cleanupRedundantData() {
                     personaPresets, musicLibrary, qzoneSettings, qzonePosts,
                     qzoneAlbums, qzonePhotos, favorites, qzoneGroups,
                     memories, worldBookCategories,
-                    // 【【【核心修复3：将新数据添加到备份对象中】】】
-                    apiPresets, shoppingProducts, callRecords
+                    apiPresets, shoppingProducts, callRecords,
+                    // 【核心修复3：将新数据添加到备份对象中】
+                    renderingRules
                 });
                 
                 const blob = new Blob(
@@ -10878,6 +10914,28 @@ async function cleanupRedundantData() {
                     }
         
                     if (Array.isArray(data.chats)) await db.chats.bulkPut(data.chats);
+// ▼▼▼ 【全新】世界书旧版本数据兼容代码 ▼▼▼
+if (data.worldBooks && Array.isArray(data.worldBooks)) {
+    console.log("正在检查世界书数据格式以确保兼容性...");
+    data.worldBooks.forEach(book => {
+        // 检查 content 字段是否是旧的字符串格式
+        if (typeof book.content === 'string') {
+            console.log(`检测到旧格式的世界书: "${book.name}"，正在自动迁移...`);
+            
+            // 将旧的字符串内容保存下来
+            const oldContentString = book.content;
+
+            // 【核心转换】将字符串替换为新的数组格式
+            book.content = [{
+                keys: [], // 默认为空关键词
+                comment: "从旧版本自动迁移的条目", // 添加一个备注
+                content: oldContentString, // 将旧的文本放入新结构中
+                enabled: true // 默认启用
+            }];
+        }
+    });
+}
+// ▲▲▲ 代码粘贴结束 ▲▲▲
                     if (Array.isArray(data.worldBooks)) await db.worldBooks.bulkPut(data.worldBooks);
                     if (Array.isArray(data.worldBookCategories)) await db.worldBookCategories.bulkPut(data.worldBookCategories);
                     if (Array.isArray(data.userStickers)) await db.userStickers.bulkPut(data.userStickers);
@@ -10889,10 +10947,11 @@ async function cleanupRedundantData() {
                     if (Array.isArray(data.qzoneGroups)) await db.qzoneGroups.bulkPut(data.qzoneGroups);
                     if (Array.isArray(data.memories)) await db.memories.bulkPut(data.memories);
                     
-                    // 【【【核心修复：在这里添加对缺失数据的写入操作】】】
                     if (Array.isArray(data.apiPresets)) await db.apiPresets.bulkPut(data.apiPresets);
                     if (Array.isArray(data.shoppingProducts)) await db.shoppingProducts.bulkPut(data.shoppingProducts);
                     if (Array.isArray(data.callRecords)) await db.callRecords.bulkPut(data.callRecords);
+                    // 【核心修复：在这里添加对渲染规则数据的写入操作】
+                    if (Array.isArray(data.renderingRules)) await db.renderingRules.bulkPut(data.renderingRules);
         
                     if (data.apiConfig) await db.apiConfig.put(data.apiConfig);
                     if (data.globalSettings) await db.globalSettings.put(data.globalSettings);
@@ -11066,6 +11125,7 @@ async function loadAllDataFromDB() {
 // ▼▼▼ 【请用这个 V2 版本】替换旧的 state.globalSettings 初始化代码 ▼▼▼
 state.globalSettings = globalSettings || { 
     id: 'main', 
+    showStatusBar: false, // <-- 新增这一行，默认关闭
     wallpaper: 'linear-gradient(135deg, #89f7fe, #66a6ff)', 
     fontUrl: '', 
     enableBackgroundActivity: false, 
@@ -11770,6 +11830,7 @@ if (!state.globalSettings.widgetData) {
     // ▼▼▼ 在这里粘贴新代码 ▼▼▼
     document.getElementById('notification-sound-url-input').value = state.globalSettings.notificationSoundUrl || '';
     // ▲▲▲ 新代码粘贴结束 ▲▲▲
+              document.getElementById('status-bar-toggle-switch').checked = state.globalSettings.showStatusBar || false;
         }
         // ▲▲▲ 替换结束 ▲▲▲
                 window.renderWallpaperScreenProxy = renderWallpaperScreen;
@@ -13712,7 +13773,6 @@ ${sharedContext}
 ${shoppingContext}
 
 现在，请根据以上规则和下面的对话历史，继续进行对话。`;
-
             
 // ▼▼▼ 【这是最终的线下记忆修复版】请用这整块代码，完整替换旧的 messagesPayload = historySlice.map(...) 代码块 ▼▼▼
 messagesPayload = historySlice.map(msg => {
@@ -15810,7 +15870,7 @@ ${longTermMemoryContext}
         -   **发说说 (原创内容)**: '[{"type": "qzone_post", "postType": "shuoshuo", "content": "动态的文字内容..."}]'
         -   **【【【重要：转发动态】】】**: **严禁**自己拼接"//转发"文字！你【必须】使用此专用指令来转发：'[{"type": "repost", "postId": (要转发的动态ID), "comment": "你的转发评论..."}]'
         
--   **发布文字图**: '[{"type": "qzone_post", "postType": "text_image", "publicText": "(可选)动态的公开文字", "hiddenContent": "对于图片的具体【中文】描述..."}]'
+-   **发布文字图**: '[{"type": "qzone_post", "postType": "text_image", "publicText": "(可选)动态的公开文字", "hiddenContent": "对于图片的具体【中文】描述...", "image_prompt": "图片的【英文】关键词, 用%20分隔, 风格为风景/动漫/插画/二次元等, 禁止真人"}]'
         -   **【【【评论动态的四种方式】】】**:
             -   **方式1 (单条文字)**: '[{"type": "qzone_comment", "name": "角色本名", "postId": 123, "commentText": "这太有趣了！"}]'
             -   **方式2 (多条文字)**: '[{"type": "qzone_comment", "name": "角色本名", "postId": 123, "comments": ["哇！", "这是什么？", "看起来好棒！"]}]'
@@ -16342,7 +16402,7 @@ ${longTermMemoryContext}
         # 你的可选行动指令:
         -   **发送文本**: '{"type": "text", "name": "角色本名", "content": "文本内容"}'
         -   **发送表情**: '{"type": "sticker", "name": "角色本名", "url": "...", "meaning": "..."}'
-        -   **发送图片**: '{"type": "ai_image", "name": "角色本名", "description": "图片的详细【中文】描述"}'
+        -   **发送图片**: '{"type": "ai_image", "name": "角色本名", "description": "图片的详细【中文】描述", "image_prompt": "图片的【英文】关键词, 用%20分隔, 风格为风景/动漫/插画/二次元等, 禁止真人"}'
         -   **发起投票**: '{"type": "poll", "name": "角色本名", "question": "...", "options": "..."}'
         -   **发起群视频**: '{"type": "group_call_request", "name": "角色本名"}'
         -【【【全新】】】如何正确使用“引用回复”功能：
@@ -17893,7 +17953,7 @@ async function endVideoCall() {
         chat.history.push(summaryMessage);
 
         // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
-        //            这就是本次修复的核心所在！
+        //            这就是本次修改的核心所在！
         // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
         
         // 3. 【全新】将完整的通话记录“翻译”成一段AI能理解的文本
@@ -17902,18 +17962,18 @@ async function endVideoCall() {
             return `${sender}: ${h.content}`;
         }).join('\n');
         
-        // 4. 【全新】创建一个对用户隐藏的、包含通话记录的系统消息。
-        // 这就是我们模仿线上/线下模式的“注入记忆”的关键步骤！
-        const hiddenReportInstruction = {
-            role: 'system',
-            content: `[系统指令：视频通话刚刚结束。请你根据完整的通话文字记录（见下方），以你的角色口吻，向用户主动发送几条消息，来自然地总结这次通话的要点、确认达成的约定，或者表达你的感受。这很重要，能让用户感觉你记得通话内容。]\n---通话记录开始---\n${callTranscriptForAI}\n---通话记录结束---`,
-            timestamp: Date.now() + 1, // 确保时间戳在“通话结束”消息之后
-            isHidden: true // 这个标记确保用户看不到这条长长的指令
-        };
-        chat.history.push(hiddenReportInstruction);
+        // 4. 【全新】在后台调用总结函数，它会自动处理API调用和记忆存储
+        // 我们在这里不使用 await，让它在后台静默执行，不阻塞UI
+        summarizeCallTranscript(chat.id, callTranscriptForAI);
 
-        // 5. 【移除】旧的、会导致错误的 triggerAiResponse() 调用
-        // await triggerAiResponse(); // <-- 这行代码已被删除
+        // 5. 【全新】创建一个对用户隐藏的、简短的系统消息，让AI对通话结束这件事本身做出反应
+        const hiddenReactionInstruction = {
+            role: 'system',
+            content: `[系统指令：视频通话刚刚结束。请你以角色的口吻，向用户主动发送一两条消息，来自然地总结这次通话的要点、确认达成的约定，或者表达你的感受。]`,
+            timestamp: Date.now() + 1, // 确保时间戳在“通话结束”消息之后
+            isHidden: true // 这个标记确保用户看不到这条指令
+        };
+        chat.history.push(hiddenReactionInstruction);
 
         // 6. 保存所有更新到数据库
         await db.chats.put(chat);
@@ -17924,11 +17984,9 @@ async function endVideoCall() {
     callTimerInterval = null;
     videoCallState = { isActive: false, isAwaitingResponse: false, isGroupCall: false, activeChatId: null, initiator: null, startTime: null, participants: [], isUserParticipating: true, callHistory: [], preCallContext: "" };
     
-    // 8. 返回聊天界面，但不再强制AI立即响应
+    // 8. 返回聊天界面，并触发AI对通话结束的反应
     if (chat) {
         openChat(chat.id);
-        // 我们现在可以自信地在这里触发AI响应，因为它处理的将是常规的、简短的聊天历史，
-        // 而不是超长的通话记录，从而避免了API错误。
         triggerAiResponse();
     }
 }
@@ -20287,6 +20345,89 @@ async function handleDeleteMemory(authorChatId, memoryTimestamp) {
                 await triggerAutoSummary(chatId);
             }
         }
+/**
+ * 【V2.0 | 错误处理增强版】专门用于总结通话记录并存入长期记忆的核心函数
+ * @param {string} chatId - 目标聊天的ID
+ * @param {string} transcriptText - 格式化后的通话文字记录
+ * @returns {Promise<boolean>} - 返回一个Promise，成功时解析为true，失败时会抛出错误。
+ */
+async function summarizeCallTranscript(chatId, transcriptText) {
+    const chat = state.chats[chatId];
+    if (!chat || !transcriptText) {
+        // 如果基础数据就有问题，直接抛出错误
+        throw new Error("基础数据不完整，无法开始总结。");
+    }
+
+    const userNickname = state.qzoneSettings.nickname || '用户';
+
+    const systemPrompt = `
+# 你的任务
+你是一个对话摘要专家。你的唯一任务是阅读下面的【视频通话记录】，并将其浓缩成【一段】流畅、连贯、客观、并且【极其精简】的摘要。
+# 核心规则
+1.  **【长度铁律】**: 你的总结【必须】非常简短，总长度【绝对不能超过80个字】。
+2.  **客观事实**: 只记录通话中发生的最关键的事实、确认的约定或角色的核心情感变化。
+3.  **第三人称与命名**: 必须使用第三人称。请严格使用“${userNickname}”（代表用户）和“${chat.originalName}”（代表AI角色）来指代对话双方。
+4.  **输出格式**: 你的回复【必须且只能】是一个JSON对象，格式如下：
+    \`{"summary": "在这里写下你总结好的摘要。"}\`
+# 待总结的视频通话记录
+${transcriptText}
+现在，请开始你的总结工作。`;
+
+    // ▲▲▲ 核心修改从这里开始 ▲▲▲
+    try {
+        const useSecondaryApi = state.apiConfig.secondaryProxyUrl && state.apiConfig.secondaryApiKey && state.apiConfig.secondaryModel;
+        const { proxyUrl, apiKey, model } = useSecondaryApi ? 
+            { proxyUrl: state.apiConfig.secondaryProxyUrl, apiKey: state.apiConfig.secondaryApiKey, model: state.apiConfig.secondaryModel } : 
+            state.apiConfig;
+
+        if (!proxyUrl || !apiKey || !model) throw new Error('API未配置，无法进行总结。');
+
+        let isGemini = proxyUrl.includes('generativelanguage');
+        let geminiConfig = toGeminiRequestData(model, apiKey, systemPrompt, [{ role: 'user', content: "请开始总结。" }]);
+
+        const response = isGemini 
+            ? await fetch(geminiConfig.url, geminiConfig.data) 
+            : await fetch(`${proxyUrl}/v1/chat/completions`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}`},
+                body: JSON.stringify({
+                    model: model,
+                    messages: [{role: 'system', content: systemPrompt}, {role: 'user', content: "请开始总结。"}],
+                    temperature: 0.1, max_tokens: 150
+                })
+            });
+
+        if (!response.ok) {
+             const errorData = await response.json().catch(() => ({ error: { message: response.statusText } }));
+             throw new Error(`API 请求失败: ${response.status} - ${errorData.error.message}`);
+        }
+        
+        const data = await response.json();
+        let rawContent = isGemini ? getGeminiResponseText(data) : data.choices[0].message.content;
+        rawContent = rawContent.replace(/^```json\s*/, '').replace(/```$/, '').trim();
+        const result = JSON.parse(rawContent);
+
+        if (result.summary && result.summary.trim()) {
+            const newMemoryEntry = {
+                content: `(在那次视频通话中，${result.summary.trim()})`,
+                timestamp: Date.now(),
+                source: 'call_summary'
+            };
+            chat.longTermMemory.push(newMemoryEntry);
+            await db.chats.put(chat);
+            console.log("通话记录已成功总结并存入长期记忆:", newMemoryEntry.content);
+            return true; // 明确返回成功状态
+        } else {
+            throw new Error("AI返回了空的或格式不正确的总结内容。");
+        }
+
+    } catch (error) {
+        console.error("总结通话记录时出错:", error);
+        // 这是最关键的修改：将捕获到的错误重新抛出！
+        throw error;
+    }
+    // ▲▲▲ 核心修改到这里结束 ▲▲▲
+}
 // ▼▼▼ 【请用这个支持记忆互通的全新版本】替换旧的 summarizeExistingLongTermMemory 函数 ▼▼▼
 /**
  * 【全新V2.0 | 支持自定义字数 | 记忆互通版】手动触发对【现有长期记忆】的总结和精炼
@@ -20879,63 +21020,88 @@ ${transcriptText}
         }
         // ▲▲▲ 替换结束 ▲▲▲
         
-        /**
-         * 显示指定通话记录的完整文字稿
-         * @param {number} recordId - 通话记录的ID
-         */
-        async function showCallTranscript(recordId) {
-            const record = await db.callRecords.get(recordId);
-            if (!record) return;
-        
-            const modal = document.getElementById('call-transcript-modal');
-            const titleEl = document.getElementById('transcript-modal-title');
-            const bodyEl = document.getElementById('transcript-modal-body');
-        
-            titleEl.textContent = `通话于 ${new Date(record.timestamp).toLocaleString()} (时长: ${Math.floor(record.duration / 60)}分${record.duration % 60}秒)`;
-            bodyEl.innerHTML = '';
-            
-            if (!record.transcript || record.transcript.length === 0) {
-                bodyEl.innerHTML = '<p style="text-align:center; color: #8a8a8a;">这次通话没有留下文字记录。</p>';
-            } else {
-                record.transcript.forEach(entry => {
-                    const bubble = document.createElement('div');
-                    // 根据角色添加不同的class，应用不同的样式
-                    bubble.className = `transcript-entry ${entry.role}`; 
-                    bubble.textContent = entry.content;
-                    bodyEl.appendChild(bubble);
-                });
-            }
-        
-            const deleteBtn = document.getElementById('delete-transcript-btn');
-            
-            // 【重要】使用克隆节点技巧，防止事件重复绑定
-            const newDeleteBtn = deleteBtn.cloneNode(true);
-            deleteBtn.parentNode.replaceChild(newDeleteBtn, deleteBtn);
-            
-            // 为新的、干净的按钮绑定事件
-            newDeleteBtn.addEventListener('click', async () => {
-                const confirmed = await showCustomConfirm(
-                    "确认删除",
-                    "确定要永久删除这条通话记录吗？此操作不可恢复。",
-                    { confirmButtonClass: 'btn-danger' }
-                );
-        
-                if (confirmed) {
-                    // 1. 关闭当前的详情弹窗
-                    modal.classList.remove('visible');
-                    
-                    // 2. 从数据库删除
-                    await db.callRecords.delete(recordId);
-                    
-                    // 3. 刷新通话记录列表
-                    await renderCallHistoryScreen();
-                    
-                    // 4. (可选) 给出成功提示
-                    alert('通话记录已删除。');
-                }
-            });
-            modal.classList.add('visible');
+/**
+ * 【V2.0 | 支持手动总结 & 错误处理】显示指定通话记录的完整文字稿
+ * @param {number} recordId - 通话记录的ID
+ */
+async function showCallTranscript(recordId) {
+    const record = await db.callRecords.get(recordId);
+    if (!record) return;
+
+    const modal = document.getElementById('call-transcript-modal');
+    const titleEl = document.getElementById('transcript-modal-title');
+    const bodyEl = document.getElementById('transcript-modal-body');
+
+    titleEl.textContent = `通话于 ${new Date(record.timestamp).toLocaleString()} (时长: ${Math.floor(record.duration / 60)}分${record.duration % 60}秒)`;
+    bodyEl.innerHTML = '';
+    
+    const deleteBtn = document.getElementById('delete-transcript-btn');
+    const summarizeBtn = document.getElementById('manual-summarize-btn');
+    
+    if (!record.transcript || record.transcript.length === 0) {
+        bodyEl.innerHTML = '<p style="text-align:center; color: #8a8a8a;">这次通话没有留下文字记录。</p>';
+        summarizeBtn.style.display = 'none';
+    } else {
+        summarizeBtn.style.display = 'block';
+        record.transcript.forEach(entry => {
+            const bubble = document.createElement('div');
+            bubble.className = `transcript-entry ${entry.role}`; 
+            bubble.textContent = entry.content;
+            bodyEl.appendChild(bubble);
+        });
+    }
+
+    const newDeleteBtn = deleteBtn.cloneNode(true);
+    deleteBtn.parentNode.replaceChild(newDeleteBtn, deleteBtn);
+    const newSummarizeBtn = summarizeBtn.cloneNode(true);
+    summarizeBtn.parentNode.replaceChild(newSummarizeBtn, summarizeBtn);
+    
+    newDeleteBtn.addEventListener('click', async () => {
+        const confirmed = await showCustomConfirm(
+            "确认删除", "确定要永久删除这条通话记录吗？此操作不可恢复。", { confirmButtonClass: 'btn-danger' }
+        );
+        if (confirmed) {
+            modal.classList.remove('visible');
+            await db.callRecords.delete(recordId);
+            await renderCallHistoryScreen();
+            alert('通话记录已删除。');
         }
+    });
+
+    // ▼▼▼ 核心修改从这里开始 ▼▼▼
+    newSummarizeBtn.addEventListener('click', async () => {
+        modal.classList.remove('visible');
+        const chat = state.chats[record.chatId];
+        if (!chat) {
+            alert('错误：找不到该通话记录所属的聊天对象。');
+            return;
+        }
+
+        await showCustomAlert("请稍候...", "正在请求AI进行手动总结...");
+        
+        // 使用 try...catch 来“接住”可能抛出的错误
+        try {
+            const transcriptText = record.transcript.map(h => {
+                const sender = h.role === 'user' ? (chat.settings.myNickname || '我') : (h.senderName || chat.name);
+                return `${sender}: ${h.content}`;
+            }).join('\n');
+
+            // 调用我们升级后的总结函数
+            await summarizeCallTranscript(record.chatId, transcriptText);
+
+            // 只有在 try 块内没有出错时，才会执行这行，弹出成功提示
+            await showCustomAlert("总结成功", `手动总结已完成！新的记忆已添加到“${chat.name}”的长期记忆中。`);
+
+        } catch (error) {
+            // 如果 summarizeCallTranscript 抛出了错误，代码会立即跳转到这里
+            // 我们就可以在这里弹出清晰的失败提示框
+            await showCustomAlert("总结失败", `操作失败，未能生成长期记忆。\n\n错误详情: ${error.message}`);
+        }
+    });
+    // ▲▲▲ 核心修改到这里结束 ▲▲▲
+
+    modal.classList.add('visible');
+}
         
         // ▲▲▲ 新函数粘贴结束 ▲▲▲
         
@@ -24705,6 +24871,16 @@ async function cleanupInvalidSongs() {
     }
 }
 
+// ▼▼▼ 【全新】这是应用状态栏显示/隐藏设置的函数 ▼▼▼
+/**
+ * 根据全局设置，应用状态栏的可见性
+ */
+function applyStatusBarVisibility() {
+    const phoneScreen = document.getElementById('phone-screen');
+    // 如果设置为 true，就添加 class；否则就移除 class。
+    phoneScreen.classList.toggle('status-bar-visible', !!state.globalSettings.showStatusBar);
+}
+// ▲▲▲ 新增函数结束 ▲▲▲
 
                // ===================================================================
                 // 4. 初始化函数 init()
@@ -24758,6 +24934,7 @@ async function cleanupInvalidSongs() {
                     window.renderWorldBookScreenProxy = renderWorldBookScreen;
         
                     await loadAllDataFromDB();
+                    applyStatusBarVisibility(); // <-- 新增这一行
                     // ▼▼▼ 【核心】在这里添加下面这行新代码 ▼▼▼
                     await migrateOldRedPacketData();
                     // ▲▲▲ 添加结束 ▲▲▲
@@ -25022,7 +25199,7 @@ audioPlayer.addEventListener('play', () => {
     // ▼▼▼ 在这里粘贴新代码 ▼▼▼
     state.globalSettings.notificationSoundUrl = document.getElementById('notification-sound-url-input').value.trim();
     // ▲▲▲ 新代码粘贴结束 ▲▲▲
-        
+          state.globalSettings.showStatusBar = document.getElementById('status-bar-toggle-switch').checked; // <-- 新增这一行        
             // 【核心修改】保存图标设置（它已经在内存中了，我们只需要把整个globalSettings存起来）
             await db.globalSettings.put(state.globalSettings);
             // ▼▼▼ 在这里粘贴另一行新代码 ▼▼▼
@@ -28364,6 +28541,13 @@ document.getElementById('search-results-list').addEventListener('click', (e) => 
 // ▼▼▼ 【全新】清理无效歌曲事件绑定 ▼▼▼
 document.getElementById('cleanup-songs-btn').addEventListener('click', cleanupInvalidSongs);
 // ▲▲▲ 新增事件绑定结束 ▲▲▲
+// ▼▼▼ 【全新】为状态栏开关添加实时预览事件 ▼▼▼
+document.getElementById('status-bar-toggle-switch').addEventListener('change', () => {
+    // 每次点击开关时，也调用这个函数来实时切换 class
+    state.globalSettings.showStatusBar = document.getElementById('status-bar-toggle-switch').checked;
+    applyStatusBarVisibility();
+});
+// ▲▲▲ 新增事件结束 ▲▲▲
                     showScreen('home-screen');
                 }
         
