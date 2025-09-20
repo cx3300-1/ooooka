@@ -14130,10 +14130,13 @@ ${forbiddenNamesContext}
                         const sender = msg.role === 'user' ? myNickname : msg.senderName;
                         let prefix = `${sender}`;
                         prefix += ` (Timestamp: ${msg.timestamp})`;
-                        if (msg.quote) {
-                            prefix += ` (回复 ${msg.quote.senderName})`;
-                        }
-                        prefix += ': ';
+    // 【核心修复】在这里，我们为引用消息构建了更完整的上下文
+    if (msg.quote) {
+        const quotedContent = String(msg.quote.content || '').substring(0, 50);
+        // 格式化为AI易于理解的格式，包含了被引用的内容
+        prefix += ` (回复 ${msg.quote.senderName} 的消息: "${quotedContent}...")`;
+    }
+    prefix += ': ';
                         let content;
                         if (msg.type === 'user_photo') content = `[${sender} 发送了一张图片，内容是：'${msg.content}']`;
                         else if (msg.type === 'ai_image') content = `[${sender} 发送了一张图片，图片内容描述为：'${msg.content}']`;
@@ -14589,11 +14592,17 @@ messagesPayload = historySlice.map(msg => {
         if (Array.isArray(msg.content) && msg.content[0]?.type === 'image_url') {
             return { role: 'user', content: [{ type: 'text', text: prefix }, ...msg.content] };
         }
-        if (msg.quote) {
-            contentStr += `(回复 ${msg.quote.senderName}): ${msg.content}`;
-        } else {
-            contentStr += msg.content;
-        }
+    // 【核心修复】在这里，我们为引用消息构建了更完整的上下文
+    if (msg.quote) {
+        // 提取被引用的内容，并截断以防过长
+        const quotedContent = String(msg.quote.content || '').substring(0, 50);
+        // 格式化为AI易于理解的格式
+        contentStr += `(回复 ${msg.quote.senderName} 的消息: "${quotedContent}..."): ${msg.content}`;
+    } else {
+        // 如果不是引用，则保持原样
+        contentStr += msg.content;
+    }
+
         if (msg.type === 'user_photo') return { role: 'user', content: `${prefix}[你发送了一张需要AI识别的图片，图片内容是：'${msg.content}']` };
         if (msg.type === 'voice_message') return { role: 'user', content: `${prefix}[你发送了一条语音消息，内容是：'${msg.content}']` };
         if (msg.type === 'transfer') return { role: 'user', content: `${prefix}[系统提示：你于时间戳 ${msg.timestamp} 向对方发起了转账: ${msg.amount}元, 备注: ${msg.note}。等待对方处理。]` };
@@ -15297,7 +15306,16 @@ case 'gomoku_move': { // 使用花括号创建块级作用域
                             break;
                         case 'open_red_packet':
                             const packetToOpen = chat.history.find(m => m.timestamp === msgData.packet_timestamp);
-                            
+                            // ▼▼▼ 在这里添加全新的验证逻辑 ▼▼▼
+const claimerOriginalName = msgData.name; // 获取尝试抢红包的角色本名
+const isMember = chat.members.some(member => member.originalName === claimerOriginalName);
+
+// 如果这个角色不是当前群的成员，就记录一个警告并直接跳过，不允许他抢
+if (!isMember) {
+    console.warn(`AI 角色 "${claimerOriginalName}" 尝试领取不属于自己的群聊红包。操作已被拦截。`);
+    continue; // 跳过后续所有抢红包的逻辑
+}
+// ▲▲▲ 验证逻辑结束 ▲▲▲
                             if (packetToOpen && packetToOpen.packetType === 'direct') {
                                 if (packetToOpen.receiverName !== msgData.name) {
                                     console.warn(`AI 角色 "${msgData.name}" 尝试领取不属于自己的专属红包 (接收人: ${packetToOpen.receiverName})。操作已被拦截。`);
@@ -30304,6 +30322,7 @@ document.getElementById('select-all-stickers-checkbox').addEventListener('change
 <!-- ▲▲▲ 替换结束 ▲▲▲ -->
 </body>
 </html>
+
 
 
 
