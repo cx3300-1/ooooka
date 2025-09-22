@@ -24401,29 +24401,33 @@ function updateMusicProgressBar() {
             }
         }
         // ▲▲▲ 全新JS函数粘贴结束 ▲▲▲
-/**
- * 【V2.1 | 最终修复版】一个简单的 Markdown 解析器
- * @param {string} text - 包含 Markdown 语法的原始文本
- * @returns {string} - 转换成 HTML 后的文本
- */
-function parseMarkdown(text) {
-    if (!text || typeof text !== 'string') return '';
+        /**
+         * 【V2.1 | 最终修复版】一个简单的 Markdown 解析器
+         * @param {string} text - 包含 Markdown 语法的原始文本
+         * @returns {string} - 转换成 HTML 后的文本
+         */
+        function parseMarkdown(text) {
+            if (!text || typeof text !== 'string') return '';
 
-    // 顺序很重要：先处理我们自定义的复杂规则
-    text = text.replace(/!h\{(.*?)\}/g, '<span class="diary-highlight">$1</span>');
-    text = text.replace(/!u\{(.*?)\}/g, '<span class="diary-underline">$1</span>');
-    text = text.replace(/!e\{(.*?)\}/g, '<span class="diary-emphasis">$1</span>');
-    text = text.replace(/!w\{(.*?)\}/g, '<span class="diary-handwritten">$1</span>');
-    text = text.replace(/!m\{(.*?)\}/g, '<span class="diary-messy">$1</span>');
-    text = text.replace(/!c\{(.*?)\}/g, '<span class="diary-censored">$1</span>');
+            // 顺序很重要：先处理我们自定义的复杂规则
+            text = text.replace(/!h\{(.*?)\}/g, '<span class="diary-highlight">$1</span>');
+            text = text.replace(/!u\{(.*?)\}/g, '<span class="diary-underline">$1</span>');
+            text = text.replace(/!e\{(.*?)\}/g, '<span class="diary-emphasis">$1</span>');
+            text = text.replace(/!w\{(.*?)\}/g, '<span class="diary-handwritten">$1</span>');
+            text = text.replace(/!m\{(.*?)\}/g, '<span class="diary-messy">$1</span>');
+            
+            // ▼▼▼ 核心修改就在这里 ▼▼▼
+            // 将原来的 !c{...} 规则，替换为您想要的 ||...|| 规则
+            text = text.replace(/\|\|(.*?)\|\|/g, '<span class="spoiler">$1</span>');
+            // ▲▲▲ 修改结束 ▲▲▲
 
-    // 再处理标准Markdown
-    text = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-    text = text.replace(/\~\~(.*?)\~\~/g, '<s>$1</s>'); 
-    text = text.replace(/\*(.*?)\*/g, '<em>$1</em>');
+            // 再处理标准Markdown
+            text = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+            text = text.replace(/\~\~(.*?)\~\~/g, '<s>$1</s>'); 
+            text = text.replace(/\*(.*?)\*/g, '<em>$1</em>');
 
-    return text;
-}
+            return text;
+        }
 
 
         // ▼▼▼ 【全新 | 数据修复函数】请将这个函数粘贴到您的JS功能区 ▼▼▼
@@ -28249,7 +28253,7 @@ async function saveMemo(content) {
     \`\`\`json
     [
       {
-        "title": "这篇日记的标题，例如：X月X日 晴",
+        "title": "这篇日记的标题，例如：9月20日 晴",
         "content": "这里是日记的详细正文，必须支持换行符\\n，并且必须巧妙地使用下面的【日记专属Markdown语法】来丰富文本表现力。"
       }
     ]
@@ -28262,7 +28266,7 @@ async function saveMemo(content) {
     -   \`!e{粉色强调}\`: 用于表达强烈的情绪。
     -   \`!w{手写体}\`: 用于写下引言、歌词或特殊笔记。
     -   \`!m{凌乱的手写体}\`: 用于表达激动、慌乱或潦草记录时的心情。
-    -   \`!c{涂黑}\`: 用于隐藏秘密或敏感词汇 (每次涂黑2~5个字)。
+    -   \`||涂黑||\`: 用于隐藏秘密或敏感词汇 (每次涂黑2~5个字)。
 
 # 供你参考的上下文
 - **你的角色设定**: ${chat.settings.aiPersona}
@@ -28345,7 +28349,7 @@ ${recentHistoryWithUser}
     \`\`\`json
     [
       {
-        "title": "这篇日记的标题，例如：X月X日 晴",
+        "title": "这篇日记的标题，例如：9月20日 晴",
         "content": "这里是日记的详细正文，必须支持换行符\\n，并且必须巧妙地使用下面的【日记专属Markdown语法】来丰富文本表现力。"
       }
     ]
@@ -28358,7 +28362,7 @@ ${recentHistoryWithUser}
     -   \`!e{粉色强调}\`: 用于表达强烈的情绪。
     -   \`!w{手写体}\`: 用于写下引言、歌词或特殊笔记。
     -   \`!m{凌乱的手写体}\`: 用于表达激动、慌乱或潦草记录时的心情。
-    -   \`!c{涂黑}\`: 用于隐藏秘密或敏感词汇 (每次涂黑2~5个字)。
+    -   \`||涂黑||\`: 用于隐藏秘密或敏感词汇(每次涂黑2~5个字)。
 
 # 供你参考的上下文
 - **你的角色设定**: ${chat.settings.aiPersona}
