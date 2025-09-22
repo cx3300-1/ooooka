@@ -14992,7 +14992,7 @@ if (!state.globalSettings.widgetData) {
                         if (!response.ok) throw new Error(`API失败: ${(await response.json()).error.message}`);
                         
                         const data = await response.json();
-                        const aiResponseContent = isGemini ? getGeminiResponseText(data) : data.choices.message.content;
+                        const aiResponseContent = getGeminiResponseText(data);
                         const responseArray = parseAiResponse(aiResponseContent);
         
                         // 直接处理返回的通话决策
